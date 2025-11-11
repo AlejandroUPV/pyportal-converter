@@ -42,18 +42,26 @@ async def convert_to_bmp(request: Request):
         )
 
 # ============================================================
-# 2️⃣ PROXY HTTP → HTTPS (para PyPortal sin TLS)
+# 2️⃣ PROXY HTTP → HTTPS (100 % compatible con PyPortal)
 # ============================================================
 
 @app.get("/proxy")
 def proxy_image(url: str):
     """
-    Proxy HTTP simple que descarga una imagen HTTPS y la sirve sin TLS.
-    Esto evita los errores de "ESP32 not responding" por certificados modernos.
+    Proxy HTTP simple y 100 % compatible con PyPortal.
+    Descarga una imagen HTTPS y la sirve como HTTP plano
+    (sin gzip, sin keep-alive, sin chunked).
     """
     try:
-        # Descarga la imagen original desde Supabase (HTTPS)
-        r = requests.get(url, timeout=15)
+        # Fuerza cabeceras simples en la petición al servidor origen
+        headers = {
+            "User-Agent": "PyPortalProxy/1.0",
+            "Accept-Encoding": "identity",   # evita compresión gzip
+            "Connection": "close"            # fuerza cierre inmediato
+        }
+
+        # Descarga la imagen original
+        r = requests.get(url, headers=headers, timeout=15, stream=True)
         if r.status_code != 200:
             return Response(
                 content=f"Error al obtener la imagen: {r.status_code}",
@@ -61,16 +69,18 @@ def proxy_image(url: str):
                 status_code=r.status_code
             )
 
-        # Prepara el contenido con longitud fija
+        # Lee todo el contenido en memoria (sin chunked)
         content = r.content
-        headers = {
-            "Content-Type": r.headers.get("Content-Type", "image/bmp"),
+
+        # Cabeceras limpias y compatibles con el ESP32-SPI
+        resp_headers = {
+            "Content-Type": "image/bmp",
             "Content-Length": str(len(content)),
+            "Connection": "close",
             "Access-Control-Allow-Origin": "*"
         }
 
-        # Devuelve el contenido como HTTP simple
-        return Response(content=content, headers=headers)
+        return Response(content=content, headers=resp_headers)
 
     except Exception as e:
         return Response(
@@ -81,7 +91,7 @@ def proxy_image(url: str):
         )
 
 # ============================================================
-# 3️⃣ ENDPOINT RAÍZ (opcional)
+# 3️⃣ ENDPOINT RAÍZ (informativo)
 # ============================================================
 
 @app.get("/")
@@ -90,7 +100,7 @@ def home():
         "status": "ok",
         "message": "Servidor PyPortal Converter & Proxy activo 🚀",
         "endpoints": {
-            "/convert": "POST - Convierte imagen a BMP",
-            "/proxy?url=<https_url>": "GET - Sirve imagen HTTPS como HTTP sin TLS"
+            "/convert": "POST → Convierte imagen a BMP 320x240",
+            "/proxy?url=<https_url>": "GET → Sirve imagen HTTPS como HTTP sin TLS (PyPortal-safe)"
         }
     }
