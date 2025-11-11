@@ -8,10 +8,17 @@ app = FastAPI()
 async def convert_to_bmp(request: Request):
     data = await request.body()
     try:
+        # Abre la imagen recibida (PNG, JPG, etc.)
         img = Image.open(BytesIO(data)).convert("RGB")
+
+        # Redimensiona a 320x240 (tamaño de PyPortal)
         img = img.resize((320, 240))
+
+        # Guarda en formato BMP real
         out = BytesIO()
         img.save(out, format="BMP")
+
+        # Devuelve contenido BMP binario
         return Response(
             content=out.getvalue(),
             media_type="image/bmp",
